@@ -1,0 +1,12 @@
+[project]
+name = "oaasis-deep-researcher"
+version = "0.1.0"
+description = "Research-to-knowledge pipeline: deep web research → OpenViking ingestion"
+requires-python = ">=3.10"
+dependencies = [
+    "ollama-deep-researcher",
+    "httpx>=0.28.1",
+]
+
+[tool.uv.sources]
+ollama-deep-researcher = { git = "https://github.com/langchain-ai/local-deep-researcher.git" }

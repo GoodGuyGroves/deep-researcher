@@ -1,0 +1,12 @@
+.venv/
+.direnv/
+__pycache__/
+*.pyc
+*.egg-info/
+dist/
+build/
+uv.lock
+result
+.env
+output/
+research_log.jsonl
