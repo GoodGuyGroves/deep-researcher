@@ -6,6 +6,7 @@ requires-python = ">=3.10"
 dependencies = [
     "ollama-deep-researcher",
     "httpx>=0.28.1",
+    "fastmcp[tasks]>=3.2.0",
 ]
 
 [tool.uv.sources]

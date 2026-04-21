@@ -7,6 +7,7 @@ Usage:
     python research.py "your research topic"
     python research.py --file topics/my-topics.txt
     python research.py --file topics/my-topics.txt --no-ingest   # research only, skip OpenViking
+    python research.py --url http://localhost:1934 "topic"    # target a specific OpenViking instance
 """
 
 import argparse
@@ -319,6 +320,10 @@ def main():
         help="Number of research iterations (overrides MAX_WEB_RESEARCH_LOOPS)",
     )
     parser.add_argument(
+        "--url", "-u",
+        help="OpenViking server URL (overrides OPENVIKING_URL env var)",
+    )
+    parser.add_argument(
         "--no-ingest",
         action="store_true",
         help="Skip OpenViking ingestion (research and save only)",
@@ -327,6 +332,9 @@ def main():
 
     if args.loops:
         os.environ["MAX_WEB_RESEARCH_LOOPS"] = str(args.loops)
+
+    if args.url:
+        os.environ["OPENVIKING_URL"] = args.url
 
     if not args.topic and not args.file:
         parser.print_help()
