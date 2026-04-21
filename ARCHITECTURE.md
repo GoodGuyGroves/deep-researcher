@@ -216,7 +216,7 @@ Each dimension is scored 1-5. The overall score is the average. If overall < 3.0
 - **VLM** (Vision-Language Model, used for abstract/overview generation) uses `gpt-5.4` via OpenAI API.
 - **Storage** is at `OpenViking/data/` with subdirectories for the vector DB, viking filesystem, and system metadata.
 - **MCP server** (`openviking-mcp`) connects to the running server and exposes tools: `search`, `read_content`, `list_contents`, `add_memory`, `add_resource`, `health_check`, and others.
-- **Wrapper script** (`openviking-mcp-wrapper`) loads `.env` for the API key, sets the config file path, clears `PYTHONPATH` to avoid Nix shell leakage, and execs the MCP binary.
+- **MCP server** runs as a persistent HTTP service managed by `ov-manager`, eliminating the need for stdio wrapper scripts.
 
 Research is stored under the `viking://resources/research/` namespace. Each research run produces:
 - `viking://resources/research/<topic-slug>` -- the summary document

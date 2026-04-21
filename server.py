@@ -1,11 +1,10 @@
 """FastMCP server for the deep research pipeline.
 
-Exposes the research-to-knowledge pipeline as MCP tools, supporting
-both stdio and Streamable HTTP transports.
+Exposes the research-to-knowledge pipeline as MCP tools over
+Streamable HTTP, managed by ov-manager.
 
 Usage:
-    stdio:  python server.py
-    http:   python server.py --transport http --port 8001
+    python server.py --port 8001
 """
 
 import argparse
@@ -18,7 +17,7 @@ from dotenv import load_dotenv
 load_dotenv(Path(__file__).parent / ".env")
 
 from fastmcp import FastMCP
-from fastmcp.server.dependencies import Progress
+from fastmcp.server.dependencies import Progress, get_http_headers
 
 PROJECT_ROOT = Path(__file__).parent
 OUTPUT_DIR = PROJECT_ROOT / "output"
@@ -38,8 +37,7 @@ mcp = FastMCP(
 async def research(
     topic: str,
     loops: int = 5,
-    openviking_url: str = "http://localhost:1933",
-    no_ingest: bool = False,
+    openviking_url: str | None = None,
     progress: Progress = Progress(),
 ) -> dict:
     """Run the full deep research pipeline on a topic.
@@ -51,16 +49,23 @@ async def research(
     Args:
         topic: The research topic to investigate.
         loops: Number of research iterations (more loops = deeper research).
-        openviking_url: OpenViking instance URL for ingestion.
-        no_ingest: If True, research only without OpenViking ingestion.
+        openviking_url: OpenViking instance URL for ingestion. If not provided,
+            falls back to the X-OpenViking-URL header from the HTTP request.
+            If neither is set, research output is saved locally without ingestion.
     """
     import asyncio
 
     start = time.time()
 
+    # Resolve OpenViking URL: explicit param > X-OpenViking-URL header > none
+    if openviking_url is None:
+        headers = get_http_headers()
+        openviking_url = headers.get("x-openviking-url", "")
+
     # Configure environment before importing research modules
     os.environ["MAX_WEB_RESEARCH_LOOPS"] = str(loops)
-    os.environ["OPENVIKING_URL"] = openviking_url
+    if openviking_url:
+        os.environ["OPENVIKING_URL"] = openviking_url
 
     # Import at call time to avoid import-time side effects and to
     # pick up the env vars we just set
@@ -133,8 +138,8 @@ async def research(
 
     # -- Step 5: Ingest into OpenViking --
     sources_ingested = 0
-    if not no_ingest:
-        await progress.set_message("Ingesting into OpenViking...")
+    if openviking_url:
+        await progress.set_message(f"Ingesting into OpenViking ({openviking_url})...")
 
         original_cwd = os.getcwd()
         try:
@@ -145,7 +150,7 @@ async def research(
         finally:
             os.chdir(original_cwd)
     else:
-        await progress.set_message("Skipping ingestion (no_ingest=True)")
+        await progress.set_message("Research saved locally (no openviking_url provided)")
 
     await progress.increment()
 
@@ -241,8 +246,9 @@ def health() -> dict:
         value = os.environ.get(key, "")
         env_status[key] = "set" if value else "missing"
 
-    # Check OpenViking reachability
-    ov_url = os.environ.get("OPENVIKING_URL", "http://localhost:1933")
+    # Check OpenViking reachability (prefer X-OpenViking-URL header)
+    headers = get_http_headers()
+    ov_url = headers.get("x-openviking-url", "") or "http://localhost:1933"
     openviking_reachable = False
     openviking_error = None
     try:
@@ -275,20 +281,11 @@ def health() -> dict:
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Deep researcher MCP server")
     parser.add_argument(
-        "--transport",
-        choices=["stdio", "http", "streamable-http"],
-        default="stdio",
-        help="Transport protocol (default: stdio)",
-    )
-    parser.add_argument(
         "--port",
         type=int,
         default=8001,
-        help="HTTP port (only used with http/streamable-http transport)",
+        help="HTTP port (default: 8001)",
     )
     args = parser.parse_args()
 
-    if args.transport == "stdio":
-        mcp.run(transport="stdio", show_banner=False)
-    else:
-        mcp.run(transport=args.transport, port=args.port)
+    mcp.run(transport="streamable-http", port=args.port)
