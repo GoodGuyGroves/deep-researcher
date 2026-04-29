@@ -57,15 +57,20 @@ async def research(
 
     start = time.time()
 
-    # Resolve OpenViking URL: explicit param > X-OpenViking-URL header > none
+    # Resolve OpenViking URL: explicit param > X-OpenViking-URL header
     if openviking_url is None:
         headers = get_http_headers()
         openviking_url = headers.get("x-openviking-url", "")
 
+    if not openviking_url:
+        raise ValueError(
+            "No OpenViking URL provided. Set the X-OpenViking-URL header "
+            "in your MCP client config or pass openviking_url explicitly."
+        )
+
     # Configure environment before importing research modules
     os.environ["MAX_WEB_RESEARCH_LOOPS"] = str(loops)
-    if openviking_url:
-        os.environ["OPENVIKING_URL"] = openviking_url
+    os.environ["OPENVIKING_URL"] = openviking_url
 
     # Import at call time to avoid import-time side effects and to
     # pick up the env vars we just set
@@ -137,20 +142,17 @@ async def research(
     await progress.increment()
 
     # -- Step 5: Ingest into OpenViking --
-    sources_ingested = 0
-    if openviking_url:
-        await progress.set_message(f"Ingesting into OpenViking ({openviking_url})...")
+    await progress.set_message(f"Ingesting into OpenViking ({openviking_url})...")
 
-        original_cwd = os.getcwd()
-        try:
-            os.chdir(PROJECT_ROOT)
-            sources_ingested = await asyncio.to_thread(
-                ingest_to_openviking, filepath, source_urls, topic, summary
-            )
-        finally:
-            os.chdir(original_cwd)
-    else:
-        await progress.set_message("Research saved locally (no openviking_url provided)")
+    sources_ingested = 0
+    original_cwd = os.getcwd()
+    try:
+        os.chdir(PROJECT_ROOT)
+        sources_ingested = await asyncio.to_thread(
+            ingest_to_openviking, filepath, source_urls, topic, summary
+        )
+    finally:
+        os.chdir(original_cwd)
 
     await progress.increment()
 
@@ -246,17 +248,20 @@ def health() -> dict:
         value = os.environ.get(key, "")
         env_status[key] = "set" if value else "missing"
 
-    # Check OpenViking reachability (prefer X-OpenViking-URL header)
+    # Check OpenViking reachability (from X-OpenViking-URL header)
     headers = get_http_headers()
-    ov_url = headers.get("x-openviking-url", "") or "http://localhost:1933"
+    ov_url = headers.get("x-openviking-url", "")
     openviking_reachable = False
     openviking_error = None
-    try:
-        resp = httpx.get(f"{ov_url}/health", timeout=5)
-        resp.raise_for_status()
-        openviking_reachable = True
-    except (httpx.ConnectError, httpx.HTTPStatusError, httpx.TimeoutException) as e:
-        openviking_error = str(e)
+    if ov_url:
+        try:
+            resp = httpx.get(f"{ov_url}/health", timeout=5)
+            resp.raise_for_status()
+            openviking_reachable = True
+        except (httpx.ConnectError, httpx.HTTPStatusError, httpx.TimeoutException) as e:
+            openviking_error = str(e)
+    else:
+        openviking_error = "No X-OpenViking-URL header set"
 
     # Output directory stats
     output_file_count = 0
