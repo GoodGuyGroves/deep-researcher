@@ -39,19 +39,58 @@ def slugify(text: str) -> str:
     return text[:80].strip("-")
 
 
-def _patch_lmstudio_api_key():
-    """Patch ChatLMStudio to use OPENAI_API_KEY when pointing at OpenAI's API."""
-    api_key = os.environ.get("OPENAI_API_KEY")
-    if not api_key:
-        return
+def _patch_lmstudio_for_litellm():
+    """Patch ChatLMStudio to route LLM calls through litellm.
 
+    This replaces the OpenAI client backend with litellm.completion(),
+    allowing the research agent to use any model litellm supports
+    (e.g. anthropic/claude-sonnet-4-5-20250514) via the LOCAL_LLM env var.
+    """
+    import litellm
+    from langchain_core.messages import AIMessage
+    from langchain_core.outputs import ChatGeneration, ChatResult
     from ollama_deep_researcher.lmstudio import ChatLMStudio
 
+    def _litellm_generate(self, messages, stop=None, run_manager=None, **kwargs):
+        msgs = []
+        for m in messages:
+            if m.type == "system":
+                role = "system"
+            elif m.type in ("ai", "assistant"):
+                role = "assistant"
+            else:
+                role = "user"
+            msgs.append({"role": role, "content": m.content})
+
+        response = litellm.completion(
+            model=self.model_name,
+            messages=msgs,
+            temperature=self.temperature,
+        )
+        content = response.choices[0].message.content
+
+        # Clean up JSON if requested (matches original ChatLMStudio behavior)
+        if self.format == "json" and content:
+            json_start = content.find("{")
+            json_end = content.rfind("}") + 1
+            if json_start >= 0 and json_end > json_start:
+                try:
+                    json.loads(content[json_start:json_end])
+                    content = content[json_start:json_end]
+                except json.JSONDecodeError:
+                    pass
+
+        return ChatResult(
+            generations=[ChatGeneration(message=AIMessage(content=content))]
+        )
+
+    ChatLMStudio._generate = _litellm_generate
+
+    # Pass a dummy api_key so the parent ChatOpenAI constructor doesn't complain
     _orig_init = ChatLMStudio.__init__
 
-    def _patched_init(self, api_key="not-needed-for-local-models", **kwargs):
-        real_key = os.environ.get("OPENAI_API_KEY", api_key)
-        _orig_init(self, api_key=real_key, **kwargs)
+    def _patched_init(self, api_key="not-needed", **kwargs):
+        _orig_init(self, api_key="not-needed", **kwargs)
 
     ChatLMStudio.__init__ = _patched_init
 
@@ -75,7 +114,7 @@ def _patch_tavily_query_length():
 
 def run_research(topic: str) -> dict:
     """Run the deep researcher graph on a topic. Returns the full state dict."""
-    _patch_lmstudio_api_key()
+    _patch_lmstudio_for_litellm()
     _patch_tavily_query_length()
     from ollama_deep_researcher.graph import graph
 

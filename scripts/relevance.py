@@ -1,16 +1,15 @@
 """Source relevance filtering module.
 
-Filters source URLs before OpenViking ingestion by asking gpt-5.4
-which sources are actually relevant to the research topic.
+Filters source URLs before OpenViking ingestion by asking the LLM
+(via litellm) which sources are actually relevant to the research topic.
 """
 
 import json
 import os
 
-import httpx
+import litellm
 
-_MODEL = "gpt-5.4"
-_API_URL = "https://api.openai.com/v1/chat/completions"
+_MODEL = os.environ.get("LOCAL_LLM", "anthropic/claude-sonnet-4-5-20250514")
 
 _FILTER_PROMPT = """\
 You are evaluating source URLs from a research report for relevance.
@@ -44,8 +43,7 @@ def filter_relevant_sources(
     if not sources:
         return sources
 
-    api_key = os.environ.get("OPENAI_API_KEY")
-    if not api_key:
+    if not os.environ.get("ANTHROPIC_API_KEY"):
         return sources
 
     sources_list = "\n".join(f"- {url}" for url in sources)
@@ -56,25 +54,14 @@ def filter_relevant_sources(
         sources_list=sources_list,
     )
 
-    client = httpx.Client(timeout=60)
-    headers = {
-        "Authorization": f"Bearer {api_key}",
-        "Content-Type": "application/json",
-    }
-
     try:
-        resp = client.post(
-            _API_URL,
-            headers=headers,
-            json={
-                "model": _MODEL,
-                "messages": [{"role": "user", "content": prompt}],
-                "temperature": 0.1,
-            },
+        resp = litellm.completion(
+            model=_MODEL,
+            messages=[{"role": "user", "content": prompt}],
+            temperature=0.1,
         )
-        resp.raise_for_status()
 
-        raw = resp.json()["choices"][0]["message"]["content"].strip()
+        raw = resp.choices[0].message.content.strip()
         # Strip markdown fencing if present
         if raw.startswith("```"):
             raw = raw.split("\n", 1)[1] if "\n" in raw else raw[3:]
@@ -90,8 +77,6 @@ def filter_relevant_sources(
         valid_kept = [url for url in kept_urls if url in sources]
         return valid_kept if valid_kept else sources
 
-    except (httpx.HTTPStatusError, httpx.ConnectError, json.JSONDecodeError, KeyError) as e:
+    except Exception as e:
         print(f"    Source filtering failed ({e}), keeping all sources")
         return sources
-    finally:
-        client.close()

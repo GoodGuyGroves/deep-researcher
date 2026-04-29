@@ -1,16 +1,15 @@
 """Self-critique module for research output quality evaluation.
 
-Scores research output against a rubric using gpt-5.4 and optionally
+Scores research output against a rubric using litellm and optionally
 generates a follow-up query targeting the weakest dimension.
 """
 
 import json
 import os
 
-import httpx
+import litellm
 
-_MODEL = "gpt-5.4"
-_API_URL = "https://api.openai.com/v1/chat/completions"
+_MODEL = os.environ.get("LOCAL_LLM", "anthropic/claude-sonnet-4-5-20250514")
 
 _RUBRIC_PROMPT = """\
 You are a research quality evaluator. Score the following research output on four dimensions (1-5 each):
@@ -58,17 +57,16 @@ Respond with ONLY the search query text, nothing else.
 def evaluate_research(
     topic: str, summary: str, sources: list[str]
 ) -> dict:
-    """Evaluate research quality against a rubric using gpt-5.4.
+    """Evaluate research quality against a rubric.
 
     Returns dict with keys: scores, overall, critique, follow_up_query.
     follow_up_query is non-None only when overall < 3.0.
     """
-    api_key = os.environ.get("OPENAI_API_KEY")
-    if not api_key:
+    if not os.environ.get("ANTHROPIC_API_KEY"):
         return {
             "scores": {},
             "overall": 0.0,
-            "critique": "No OPENAI_API_KEY set, skipping evaluation",
+            "critique": "No ANTHROPIC_API_KEY set, skipping evaluation",
             "follow_up_query": None,
         }
 
@@ -80,25 +78,14 @@ def evaluate_research(
         summary=summary[:4000],
     )
 
-    client = httpx.Client(timeout=60)
-    headers = {
-        "Authorization": f"Bearer {api_key}",
-        "Content-Type": "application/json",
-    }
-
     # Score the research
-    resp = client.post(
-        _API_URL,
-        headers=headers,
-        json={
-            "model": _MODEL,
-            "messages": [{"role": "user", "content": rubric_message}],
-            "temperature": 0.2,
-        },
+    resp = litellm.completion(
+        model=_MODEL,
+        messages=[{"role": "user", "content": rubric_message}],
+        temperature=0.2,
     )
-    resp.raise_for_status()
 
-    raw = resp.json()["choices"][0]["message"]["content"].strip()
+    raw = resp.choices[0].message.content.strip()
     # Strip markdown fencing if present
     if raw.startswith("```"):
         raw = raw.split("\n", 1)[1] if "\n" in raw else raw[3:]
@@ -109,7 +96,6 @@ def evaluate_research(
     try:
         eval_data = json.loads(raw)
     except json.JSONDecodeError:
-        client.close()
         return {
             "scores": {},
             "overall": 0.0,
@@ -136,22 +122,15 @@ def evaluate_research(
             critique=critique,
             summary_excerpt=summary[:500],
         )
-        resp = client.post(
-            _API_URL,
-            headers=headers,
-            json={
-                "model": _MODEL,
-                "messages": [{"role": "user", "content": follow_up_message}],
-                "temperature": 0.3,
-            },
+        resp = litellm.completion(
+            model=_MODEL,
+            messages=[{"role": "user", "content": follow_up_message}],
+            temperature=0.3,
         )
-        resp.raise_for_status()
-        follow_up_query = resp.json()["choices"][0]["message"]["content"].strip()
+        follow_up_query = resp.choices[0].message.content.strip()
         # Truncate if needed
         if len(follow_up_query) > 200:
             follow_up_query = follow_up_query[:200]
-
-    client.close()
 
     return {
         "scores": scores,

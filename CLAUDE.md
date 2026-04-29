@@ -1,6 +1,6 @@
 # Deep Researcher
 
-Research-to-knowledge pipeline. Uses iterative web search (Tavily + OpenAI gpt-5.4) to deeply research topics and ingest results into OpenViking.
+Research-to-knowledge pipeline. Uses iterative web search (Tavily) with an LLM (via litellm, currently Anthropic Claude) to deeply research topics and ingest results into OpenViking.
 
 ## Architecture
 
@@ -17,16 +17,18 @@ Both share the same core flow: research (LangGraph agent) -> evaluate (rubric sc
 |---|---|
 | `research.py` | Orchestration, CLI, monkey-patches, OpenViking ingestion |
 | `server.py` | FastMCP HTTP server with 4 tools: `research`, `list_research`, `read_research`, `health` |
-| `scripts/evaluate.py` | Quality evaluation via gpt-5.4 rubric (coverage, source quality, specificity, actionability) |
-| `scripts/relevance.py` | Source URL filtering via gpt-5.4 before ingestion |
+| `scripts/evaluate.py` | Quality evaluation via litellm rubric (coverage, source quality, specificity, actionability) |
+| `scripts/relevance.py` | Source URL filtering via litellm before ingestion |
 
 ### External dependency: ollama-deep-researcher
 
 The research agent is from [langchain-ai/local-deep-researcher](https://github.com/langchain-ai/local-deep-researcher), installed via pip from git. It provides a LangGraph `StateGraph` with nodes: `generate_query` -> `web_research` -> `summarize_sources` -> `reflect_on_summary` -> loop or `finalize_summary`.
 
-This package only supports `ollama` and `lmstudio` as LLM providers. We use the `lmstudio` provider pointed at `https://api.openai.com/v1` to reach gpt-5.4. Two monkey-patches in `research.py` make this work:
+This package only supports `ollama` and `lmstudio` as LLM providers. We keep `LLM_PROVIDER=lmstudio` for config routing, but monkey-patch `ChatLMStudio._generate()` in `research.py` to route all LLM calls through **litellm** instead of the OpenAI client. This allows using any model litellm supports (Anthropic, OpenAI, Mistral, etc.) by changing `LOCAL_LLM`.
 
-- `_patch_lmstudio_api_key()` -- injects `OPENAI_API_KEY` into `ChatLMStudio.__init__` (which defaults to `"not-needed-for-local-models"`)
+Two monkey-patches in `research.py`:
+
+- `_patch_lmstudio_for_litellm()` -- replaces `ChatLMStudio._generate()` with a litellm-backed implementation. Also passes a dummy `api_key` to the parent `ChatOpenAI` constructor since we bypass it entirely.
 - `_patch_tavily_query_length()` -- truncates queries > 390 chars to stay within Tavily's 400-char API limit
 
 Both patches are fragile -- if the upstream package changes its internals, they break silently. Check them if research starts failing after a dependency update.
@@ -43,14 +45,45 @@ All set in `.env` (gitignored):
 
 | Variable | Purpose |
 |---|---|
-| `OPENAI_API_KEY` | Used by monkey-patch, evaluate.py, relevance.py |
+| `ANTHROPIC_API_KEY` | Used by litellm for Anthropic models |
 | `TAVILY_API_KEY` | Tavily search API |
-| `LLM_PROVIDER` | Must be `lmstudio` |
-| `LOCAL_LLM` | Model name, e.g. `gpt-5.4` |
-| `LMSTUDIO_BASE_URL` | `https://api.openai.com/v1` |
+| `LLM_PROVIDER` | Must be `lmstudio` (for config routing to the patched code path) |
+| `LOCAL_LLM` | litellm model string, e.g. `anthropic/claude-sonnet-4-5-20250514` |
+| `LMSTUDIO_BASE_URL` | Passed to constructor but ignored by the litellm patch |
 | `SEARCH_API` | `tavily` |
 | `MAX_WEB_RESEARCH_LOOPS` | Default iterations per run (default: 5) |
 | `OPENVIKING_URL` | OpenViking server URL (default: `http://localhost:1933`) |
+
+## Running
+
+The MCP server runs via Docker Compose:
+
+```bash
+# Start the server
+docker compose up -d
+
+# Check status
+docker compose ps
+
+# Follow logs
+docker compose logs -f
+
+# Stop
+docker compose down
+
+# Rebuild after code changes
+docker compose up -d --build
+```
+
+The CLI can also be run directly (for local dev or one-off research):
+```bash
+python research.py "topic"
+```
+
+Or via the container:
+```bash
+docker compose run deep-researcher python research.py "topic"
+```
 
 ## MCP server
 
@@ -67,8 +100,6 @@ Runs on port 8001 with Streamable HTTP transport. Registered in the workspace `.
 ```
 
 The `X-OpenViking-URL` header routes ingestion to a specific OpenViking instance per request.
-
-Start with: `python server.py --port 8001`
 
 ## Quality gate
 
@@ -88,3 +119,4 @@ Research is scored 1-5 on four dimensions. If the overall average falls below 3.
 - `save_output()` uses relative paths (`Path("output")`), so the server does `os.chdir(PROJECT_ROOT)` around calls to it.
 - Source extraction relies on the `* Title : URL` format that local-deep-researcher produces. If the upstream format changes, `extract_sources()` will silently return no URLs.
 - The `research` MCP tool is decorated with `@mcp.tool(task=True)` making it a FastMCP background task with progress reporting.
+- `evaluate.py` and `relevance.py` use `litellm.completion()` directly (not via LangChain). They read `LOCAL_LLM` for the model name and `ANTHROPIC_API_KEY` from environment.

@@ -70,7 +70,7 @@ async def research(
     # Import at call time to avoid import-time side effects and to
     # pick up the env vars we just set
     from research import (
-        _patch_lmstudio_api_key,
+        _patch_lmstudio_for_litellm,
         _patch_tavily_query_length,
         extract_sources,
         ingest_to_openviking,
@@ -80,7 +80,7 @@ async def research(
     from scripts.evaluate import evaluate_research
 
     # Apply monkey-patches
-    _patch_lmstudio_api_key()
+    _patch_lmstudio_for_litellm()
     _patch_tavily_query_length()
 
     # -- Step 1: Research --
@@ -240,7 +240,7 @@ def health() -> dict:
     import httpx
 
     # Check required .env keys
-    required_keys = ["OPENAI_API_KEY", "TAVILY_API_KEY"]
+    required_keys = ["ANTHROPIC_API_KEY", "TAVILY_API_KEY"]
     env_status = {}
     for key in required_keys:
         value = os.environ.get(key, "")
@@ -281,6 +281,12 @@ def health() -> dict:
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Deep researcher MCP server")
     parser.add_argument(
+        "--host",
+        type=str,
+        default="127.0.0.1",
+        help="Host to bind to (default: 127.0.0.1)",
+    )
+    parser.add_argument(
         "--port",
         type=int,
         default=8001,
@@ -288,4 +294,4 @@ if __name__ == "__main__":
     )
     args = parser.parse_args()
 
-    mcp.run(transport="streamable-http", port=args.port)
+    mcp.run(transport="streamable-http", host=args.host, port=args.port)

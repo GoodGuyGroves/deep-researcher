@@ -24,8 +24,14 @@
 
           shellHook = ''
             echo ""
-            echo "  Usage:  python research.py \"your topic here\""
-            echo "  Batch:  python research.py --file topics/my-topics.txt"
+            echo "  Deep Researcher (docker-compose):"
+            echo "    docker compose up -d       # start MCP server"
+            echo "    docker compose ps          # show status"
+            echo "    docker compose down        # stop"
+            echo "    docker compose logs -f     # follow logs"
+            echo ""
+            echo "  CLI (local):"
+            echo "    python research.py \"topic\"  # run research directly"
             echo ""
           '';
         };
