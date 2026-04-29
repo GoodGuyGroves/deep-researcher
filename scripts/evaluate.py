@@ -9,7 +9,7 @@ import os
 
 import litellm
 
-_MODEL = os.environ.get("LOCAL_LLM", "anthropic/claude-sonnet-4-5-20250514")
+_MODEL = os.environ.get("LOCAL_LLM", "anthropic/claude-sonnet-4-6")
 
 _RUBRIC_PROMPT = """\
 You are a research quality evaluator. Score the following research output on four dimensions (1-5 each):
