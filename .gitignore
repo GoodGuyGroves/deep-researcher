@@ -5,6 +5,8 @@ __pycache__/
 *.egg-info/
 dist/
 build/
+output/
+topics/
 result
 .env
 research_log.jsonl
