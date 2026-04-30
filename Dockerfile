@@ -1,5 +1,10 @@
 FROM python:3.13-slim
 
+LABEL org.opencontainers.image.title="deep-researcher" \
+      org.opencontainers.image.description="Iterative web research pipeline with LLM summarization and optional OpenViking ingestion" \
+      org.opencontainers.image.source="https://github.com/GoodGuyGroves/deep-researcher" \
+      org.opencontainers.image.licenses="MIT"
+
 WORKDIR /app
 
 # Install uv for fast, reproducible dependency management
