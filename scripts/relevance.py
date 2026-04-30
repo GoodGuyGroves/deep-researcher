@@ -9,7 +9,7 @@ import os
 
 import litellm
 
-_MODEL = os.environ.get("LOCAL_LLM", "anthropic/claude-sonnet-4-6")
+_MODEL = os.environ.get("LLM_MODEL", "anthropic/claude-sonnet-4-6")
 
 _FILTER_PROMPT = """\
 You are evaluating source URLs from a research report for relevance.

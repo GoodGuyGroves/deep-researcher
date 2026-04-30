@@ -1,7 +1,7 @@
 """Research-to-knowledge pipeline.
 
-Runs local-deep-researcher on a topic, saves the output, and ingests
-the summary + source URLs into OpenViking.
+Runs the iterative research engine on a topic, evaluates quality,
+saves the output, and optionally ingests into OpenViking.
 
 Usage:
     python research.py "your research topic"
@@ -39,93 +39,18 @@ def slugify(text: str) -> str:
     return text[:80].strip("-")
 
 
-def _patch_lmstudio_for_litellm():
-    """Patch ChatLMStudio to route LLM calls through litellm.
-
-    This replaces the OpenAI client backend with litellm.completion(),
-    allowing the research agent to use any model litellm supports
-    (e.g. anthropic/claude-sonnet-4-5-20250514) via the LOCAL_LLM env var.
-    """
-    import litellm
-    from langchain_core.messages import AIMessage
-    from langchain_core.outputs import ChatGeneration, ChatResult
-    from ollama_deep_researcher.lmstudio import ChatLMStudio
-
-    def _litellm_generate(self, messages, stop=None, run_manager=None, **kwargs):
-        msgs = []
-        for m in messages:
-            if m.type == "system":
-                role = "system"
-            elif m.type in ("ai", "assistant"):
-                role = "assistant"
-            else:
-                role = "user"
-            msgs.append({"role": role, "content": m.content})
-
-        response = litellm.completion(
-            model=self.model_name,
-            messages=msgs,
-            temperature=self.temperature,
-        )
-        content = response.choices[0].message.content
-
-        # Clean up JSON if requested (matches original ChatLMStudio behavior)
-        if self.format == "json" and content:
-            json_start = content.find("{")
-            json_end = content.rfind("}") + 1
-            if json_start >= 0 and json_end > json_start:
-                try:
-                    json.loads(content[json_start:json_end])
-                    content = content[json_start:json_end]
-                except json.JSONDecodeError:
-                    pass
-
-        return ChatResult(
-            generations=[ChatGeneration(message=AIMessage(content=content))]
-        )
-
-    ChatLMStudio._generate = _litellm_generate
-
-    # Pass a dummy api_key so the parent ChatOpenAI constructor doesn't complain
-    _orig_init = ChatLMStudio.__init__
-
-    def _patched_init(self, api_key="not-needed", **kwargs):
-        _orig_init(self, api_key="not-needed", **kwargs)
-
-    ChatLMStudio.__init__ = _patched_init
-
-
-def _patch_tavily_query_length():
-    """Patch Tavily search to truncate queries that exceed the 400-char API limit."""
-    try:
-        import ollama_deep_researcher.utils as utils
-
-        _orig_tavily = utils.tavily_search
-
-        def _truncated_tavily(query, *args, **kwargs):
-            if len(query) > 390:
-                query = query[:390]
-            return _orig_tavily(query, *args, **kwargs)
-
-        utils.tavily_search = _truncated_tavily
-    except (ImportError, AttributeError):
-        pass
-
-
 def run_research(topic: str) -> dict:
-    """Run the deep researcher graph on a topic. Returns the full state dict."""
-    _patch_lmstudio_for_litellm()
-    _patch_tavily_query_length()
-    from ollama_deep_researcher.graph import graph
+    """Run the iterative research loop on a topic. Returns dict with 'running_summary'."""
+    from engine import ResearchConfig, run_research_loop
+
+    config = ResearchConfig.from_env()
 
     print(f"  Researching: {topic}")
-    print(f"  LLM: {os.environ.get('LOCAL_LLM', 'llama3.2')}")
-    print(f"  Search: {os.environ.get('SEARCH_API', 'duckduckgo')}")
-    print(f"  Loops: {os.environ.get('MAX_WEB_RESEARCH_LOOPS', '3')}")
+    print(f"  LLM: {config.llm_model}")
+    print(f"  Loops: {config.max_loops}")
     print()
 
-    result = graph.invoke({"research_topic": topic})
-    return result
+    return run_research_loop(topic, config)
 
 
 def extract_sources(summary: str) -> list[str]:
@@ -248,9 +173,8 @@ def process_topic(topic: str, ingest: bool = True) -> None:
     print(f"{'='*60}\n")
 
     start = time.time()
-    loop_count = int(os.environ.get("MAX_WEB_RESEARCH_LOOPS", "3"))
-    search_api = os.environ.get("SEARCH_API", "duckduckgo")
-    llm_model = os.environ.get("LOCAL_LLM", "llama3.2")
+    loop_count = int(os.environ.get("MAX_WEB_RESEARCH_LOOPS", "5"))
+    llm_model = os.environ.get("LLM_MODEL", "anthropic/claude-sonnet-4-6")
 
     # Research
     result = run_research(topic)
@@ -336,7 +260,6 @@ def process_topic(topic: str, ingest: bool = True) -> None:
             "critique": evaluation.get("critique", ""),
         },
         "duration_seconds": round(duration, 1),
-        "search_api": search_api,
         "llm_model": llm_model,
     }
     _append_research_log(log_record)

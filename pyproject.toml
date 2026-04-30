@@ -1,14 +1,12 @@
 [project]
-name = "oaasis-deep-researcher"
+name = "deep-researcher"
 version = "0.1.0"
-description = "Research-to-knowledge pipeline: deep web research → OpenViking ingestion"
+description = "Research-to-knowledge pipeline: iterative web search, LLM summarization, and optional OpenViking ingestion"
 requires-python = ">=3.10"
 dependencies = [
-    "ollama-deep-researcher",
+    "litellm",
+    "tavily-python",
     "httpx>=0.28.1",
     "fastmcp[tasks]>=3.2.0",
-    "litellm",
+    "python-dotenv",
 ]
-
-[tool.uv.sources]
-ollama-deep-researcher = { git = "https://github.com/langchain-ai/local-deep-researcher.git" }

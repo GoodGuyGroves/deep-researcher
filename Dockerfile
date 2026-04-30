@@ -1,19 +1,16 @@
-FROM python:3.12-slim
+FROM python:3.13-slim
 
 WORKDIR /app
 
-# git is needed to install ollama-deep-researcher from GitHub
-RUN apt-get update && apt-get install -y --no-install-recommends git && rm -rf /var/lib/apt/lists/*
-
 # Install uv for fast, reproducible dependency management
-COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
+COPY --from=ghcr.io/astral-sh/uv:0.7 /uv /uvx /bin/
 
 # Install dependencies from lockfile
 COPY pyproject.toml uv.lock ./
 RUN uv sync --frozen --no-dev
 
 # Copy application code
-COPY server.py research.py ./
+COPY engine.py server.py research.py ./
 COPY scripts/ scripts/
 
 ENV PATH="/app/.venv/bin:$PATH"

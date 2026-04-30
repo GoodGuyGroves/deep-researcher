@@ -1,7 +1,7 @@
 """FastMCP server for the deep research pipeline.
 
 Exposes the research-to-knowledge pipeline as MCP tools over
-Streamable HTTP, managed by ov-manager.
+Streamable HTTP.
 
 Usage:
     python server.py --port 8001
@@ -51,7 +51,7 @@ async def research(
         loops: Number of research iterations (more loops = deeper research).
         openviking_url: OpenViking instance URL for ingestion. If not provided,
             falls back to the X-OpenViking-URL header from the HTTP request.
-            If neither is set, research output is saved locally without ingestion.
+            If neither is set, research runs and saves output locally without ingestion.
     """
     import asyncio
 
@@ -62,21 +62,16 @@ async def research(
         headers = get_http_headers()
         openviking_url = headers.get("x-openviking-url", "")
 
-    if not openviking_url:
-        raise ValueError(
-            "No OpenViking URL provided. Set the X-OpenViking-URL header "
-            "in your MCP client config or pass openviking_url explicitly."
-        )
+    ingest = bool(openviking_url)
 
     # Configure environment before importing research modules
     os.environ["MAX_WEB_RESEARCH_LOOPS"] = str(loops)
-    os.environ["OPENVIKING_URL"] = openviking_url
+    if ingest:
+        os.environ["OPENVIKING_URL"] = openviking_url
 
     # Import at call time to avoid import-time side effects and to
     # pick up the env vars we just set
     from research import (
-        _patch_lmstudio_for_litellm,
-        _patch_tavily_query_length,
         extract_sources,
         ingest_to_openviking,
         run_research,
@@ -84,12 +79,9 @@ async def research(
     )
     from scripts.evaluate import evaluate_research
 
-    # Apply monkey-patches
-    _patch_lmstudio_for_litellm()
-    _patch_tavily_query_length()
-
     # -- Step 1: Research --
-    await progress.set_total(4)
+    total_steps = 4 if ingest else 3
+    await progress.set_total(total_steps)
     await progress.set_message(f"Researching: {topic}")
 
     result = await asyncio.to_thread(run_research, topic)
@@ -141,20 +133,21 @@ async def research(
 
     await progress.increment()
 
-    # -- Step 5: Ingest into OpenViking --
-    await progress.set_message(f"Ingesting into OpenViking ({openviking_url})...")
-
+    # -- Step 5: Ingest into OpenViking (optional) --
     sources_ingested = 0
-    original_cwd = os.getcwd()
-    try:
-        os.chdir(PROJECT_ROOT)
-        sources_ingested = await asyncio.to_thread(
-            ingest_to_openviking, filepath, source_urls, topic, summary
-        )
-    finally:
-        os.chdir(original_cwd)
+    if ingest:
+        await progress.set_message(f"Ingesting into OpenViking ({openviking_url})...")
 
-    await progress.increment()
+        original_cwd = os.getcwd()
+        try:
+            os.chdir(PROJECT_ROOT)
+            sources_ingested = await asyncio.to_thread(
+                ingest_to_openviking, filepath, source_urls, topic, summary
+            )
+        finally:
+            os.chdir(original_cwd)
+
+        await progress.increment()
 
     duration = round(time.time() - start, 1)
 
