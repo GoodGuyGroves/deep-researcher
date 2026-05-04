@@ -124,18 +124,19 @@ def ingest_to_openviking(
     resp.raise_for_status()
     temp_file_id = resp.json()["result"]["temp_file_id"]
 
-    # Add the uploaded file as a resource. Wait for embedding to complete so
-    # the summary is immediately searchable when this call returns — otherwise
-    # callers see "ingested" but search misses the doc until embedding catches
-    # up (~10–30s lag). Source URLs below stay async; waiting on each would
-    # multiply runtime by N sources.
+    # Add the uploaded file as a resource. wait=False (async) keeps this
+    # call decoupled from OV's downstream processing: OV uses Anthropic for
+    # the L0/L1 summary VLM step, and any transient upstream hiccup there
+    # would otherwise bubble back as a 500 and crash this MCP server's stream.
+    # Trade-off: callers searching immediately may miss the doc for ~10-30s
+    # while OV finishes embedding — see the rg-research SKILL note.
     topic_slug = filepath.stem
     resp = client.post(
         "/api/v1/resources",
         json={
             "temp_file_id": temp_file_id,
             "to": f"viking://resources/research/{topic_slug}",
-            "wait": True,
+            "wait": False,
         },
     )
     resp.raise_for_status()
