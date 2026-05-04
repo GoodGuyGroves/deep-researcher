@@ -124,14 +124,18 @@ def ingest_to_openviking(
     resp.raise_for_status()
     temp_file_id = resp.json()["result"]["temp_file_id"]
 
-    # Add the uploaded file as a resource
+    # Add the uploaded file as a resource. Wait for embedding to complete so
+    # the summary is immediately searchable when this call returns — otherwise
+    # callers see "ingested" but search misses the doc until embedding catches
+    # up (~10–30s lag). Source URLs below stay async; waiting on each would
+    # multiply runtime by N sources.
     topic_slug = filepath.stem
     resp = client.post(
         "/api/v1/resources",
         json={
             "temp_file_id": temp_file_id,
             "to": f"viking://resources/research/{topic_slug}",
-            "wait": False,
+            "wait": True,
         },
     )
     resp.raise_for_status()
