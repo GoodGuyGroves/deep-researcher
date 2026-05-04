@@ -92,7 +92,15 @@ def ingest_to_openviking(
     ov_url = os.environ.get("OPENVIKING_URL", "http://localhost:1933")
     ov_api_key = os.environ.get("OPENVIKING_API_KEY", "")
 
-    headers = {"X-Api-Key": ov_api_key} if ov_api_key else {}
+    # Tenant-context headers required by OpenViking when the configured key is
+    # a root key. Matches the convention used by the ov-mcp client.
+    headers = {
+        "X-OpenViking-Account": "default",
+        "X-OpenViking-User": "default",
+        "X-OpenViking-Agent": "default",
+    }
+    if ov_api_key:
+        headers["X-Api-Key"] = ov_api_key
     client = httpx.Client(base_url=ov_url, timeout=120, headers=headers)
 
     # Check server health
