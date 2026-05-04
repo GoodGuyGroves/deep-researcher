@@ -47,6 +47,7 @@ TAVILY_API_KEY=tvly-...
 MAX_WEB_RESEARCH_LOOPS=5
 # Optional: OpenViking server for knowledge base ingestion
 # OPENVIKING_URL=http://localhost:1933
+# OPENVIKING_API_KEY=...   # required if OpenViking has auth_mode=api_key
 ```
 
 ### Usage
@@ -79,6 +80,7 @@ Output is saved to `output/YYYYMMDD-<slug>.md` with YAML frontmatter.
 | `TAVILY_API_KEY` | Yes | -- | [Tavily](https://tavily.com/) web search API key |
 | `MAX_WEB_RESEARCH_LOOPS` | No | `5` | Number of search-summarize-reflect iterations per topic |
 | `OPENVIKING_URL` | No | -- | OpenViking server URL for ingestion (skipped if unset) |
+| `OPENVIKING_API_KEY` | No | -- | API key for OpenViking when its `auth_mode=api_key`; sent as `X-Api-Key` header |
 | `FETCH_FULL_PAGE` | No | `true` | Include full page content from Tavily results |
 
 ## MCP server

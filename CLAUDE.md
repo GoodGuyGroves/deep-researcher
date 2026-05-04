@@ -49,6 +49,7 @@ All set in `.env` (gitignored):
 | `LLM_MODEL` | No | `anthropic/claude-sonnet-4-6` | litellm model string |
 | `MAX_WEB_RESEARCH_LOOPS` | No | `5` | Research iterations per topic |
 | `OPENVIKING_URL` | No | -- | OpenViking server URL for ingestion (skipped if unset) |
+| `OPENVIKING_API_KEY` | No | -- | API key for OpenViking when its `auth_mode=api_key`; sent as `X-Api-Key` header |
 | `FETCH_FULL_PAGE` | No | `true` | Include full page content from Tavily results |
 
 ## Running

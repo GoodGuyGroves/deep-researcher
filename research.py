@@ -90,8 +90,10 @@ def ingest_to_openviking(
     Returns the number of source URLs actually ingested.
     """
     ov_url = os.environ.get("OPENVIKING_URL", "http://localhost:1933")
+    ov_api_key = os.environ.get("OPENVIKING_API_KEY", "")
 
-    client = httpx.Client(base_url=ov_url, timeout=120)
+    headers = {"X-Api-Key": ov_api_key} if ov_api_key else {}
+    client = httpx.Client(base_url=ov_url, timeout=120, headers=headers)
 
     # Check server health
     try:
