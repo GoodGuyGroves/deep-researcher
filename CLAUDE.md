@@ -50,6 +50,7 @@ All set in `.env` (gitignored):
 | `MAX_WEB_RESEARCH_LOOPS` | No | `5` | Research iterations per topic |
 | `OPENVIKING_URL` | No | -- | OpenViking server URL for ingestion (skipped if unset) |
 | `OPENVIKING_API_KEY` | No | -- | API key for OpenViking when its `auth_mode=api_key`; sent as `X-Api-Key` header |
+| `OPENVIKING_AGENT` | No | `deep-researcher` | Sent as `X-OpenViking-Agent` header so OV's audit trail can attribute writes |
 | `FETCH_FULL_PAGE` | No | `true` | Include full page content from Tavily results |
 
 ## Running

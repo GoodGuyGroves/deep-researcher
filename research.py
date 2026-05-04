@@ -91,13 +91,15 @@ def ingest_to_openviking(
     """
     ov_url = os.environ.get("OPENVIKING_URL", "http://localhost:1933")
     ov_api_key = os.environ.get("OPENVIKING_API_KEY", "")
+    ov_agent = os.environ.get("OPENVIKING_AGENT", "deep-researcher")
 
     # Tenant-context headers required by OpenViking when the configured key is
-    # a root key. Matches the convention used by the ov-mcp client.
+    # a root key. Account/User stay "default" for single-tenant deployments;
+    # Agent identifies this service so OV's audit trail can attribute writes.
     headers = {
         "X-OpenViking-Account": "default",
         "X-OpenViking-User": "default",
-        "X-OpenViking-Agent": "default",
+        "X-OpenViking-Agent": ov_agent,
     }
     if ov_api_key:
         headers["X-Api-Key"] = ov_api_key
