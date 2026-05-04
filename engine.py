@@ -234,7 +234,7 @@ def generate_query(topic: str, config: ResearchConfig) -> str:
     )
     raw = _llm_call(
         config.llm_model,
-        [{"role": "system", "content": prompt}],
+        [{"role": "user", "content": prompt}],
         json_mode=True,
     )
     try:
