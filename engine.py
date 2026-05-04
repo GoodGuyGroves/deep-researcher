@@ -20,6 +20,13 @@ from typing import Callable
 import litellm
 from tavily import TavilyClient
 
+# Retry transient upstream errors (SSL EOF, Server disconnected, broken pipe,
+# 5xx) so they self-heal inside the call instead of bubbling up to the MCP
+# stream and breaking the session. 60s ceiling matches Anthropic's typical
+# response time; longer than that almost always means the request is stuck.
+litellm.num_retries = 2
+litellm.request_timeout = 60
+
 # ---------------------------------------------------------------------------
 # Configuration
 # ---------------------------------------------------------------------------
