@@ -12,12 +12,28 @@ import litellm
 _MODEL = os.environ.get("LLM_MODEL", "anthropic/claude-sonnet-4-6")
 
 _RUBRIC_PROMPT = """\
-You are a research quality evaluator. Score the following research output on four dimensions (1-5 each):
+You are a research quality evaluator. Be a strict grader; the goal is to surface weak research, not to be encouraging.
 
-1. **Coverage** - Did the research address the actual topic or drift off-topic?
-2. **Source quality** - Are the sources authoritative and credible, or mostly SEO content / low-quality blogs?
-3. **Specificity** - Does it contain concrete findings, data, and details, or is it vague hand-waving?
-4. **Actionability** - Can someone use this information to make decisions or build things?
+Score the following research output on four dimensions (1-5 each).
+
+1. **Coverage** — Did the research address the actual topic or drift off-topic? (Breadth, not depth.)
+
+2. **Source quality** — Are the sources authoritative and credible?
+   - 5 = primarily official docs, vendor engineering blogs on the vendor's own domain, GitHub repos, RFCs, peer-reviewed papers
+   - 3 = mix of authoritative and secondary sources (industry magazines, well-known practitioner blogs)
+   - 1-2 = mostly Medium posts, LinkedIn Pulse, dev.to listicles, "AI marketing" sites, SEO content, generic news aggregators
+   Score down hard for Medium / LinkedIn / marketing-shaped domains unless the specific URL clearly carries unique primary material.
+
+3. **Specificity** — Does it contain concrete, verifiable detail?
+   - 5 = schemas, code snippets, version numbers, named systems with their actual configuration, specific dates/numbers with citations
+   - 3 = mostly named entities and clear claims, but missing the artifacts a reader would need to act
+   - 1-2 = vague hand-waving, marketing-shaped language ("leverages", "enables", "robust", "comprehensive"), no schemas/code/versions, sweeping numbers without provenance
+   Treat unsourced statistics (e.g. "70% reduction in MTTR") as a specificity warning, not strength.
+
+4. **Actionability** — Could a competent practitioner use this output, alone, to make a decision or write code?
+   - 5 = decision-grade: comparisons with concrete trade-offs, runnable examples, named tools with their actual interfaces
+   - 3 = directional guidance but the reader still has to do their own legwork
+   - 1-2 = aspirational summary; no concrete next step
 
 Research topic: {topic}
 
@@ -113,8 +129,12 @@ def evaluate_research(
     critique = eval_data.get("critique", "")
     weakest = eval_data.get("weakest_dimension", "")
 
+    # Trigger a follow-up when the overall score is weak OR when any single
+    # dimension is below 2.5 — catches the "broad-but-shallow" pattern where
+    # source_quality scores 2 but coverage carries the average above 3.
+    weakest_score = min(scores.values()) if scores else 0
     follow_up_query = None
-    if overall < 3.0 and weakest:
+    if (overall < 3.0 or weakest_score < 2.5) and weakest:
         # Generate a targeted follow-up query
         follow_up_message = _FOLLOW_UP_PROMPT.format(
             topic=topic,

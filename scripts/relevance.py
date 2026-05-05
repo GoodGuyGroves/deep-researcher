@@ -12,7 +12,7 @@ import litellm
 _MODEL = os.environ.get("LLM_MODEL", "anthropic/claude-sonnet-4-6")
 
 _FILTER_PROMPT = """\
-You are evaluating source URLs from a research report for relevance.
+You are evaluating source URLs from a research report for relevance and authority.
 
 Research topic: {topic}
 
@@ -22,10 +22,32 @@ Research summary (first 1000 chars):
 Source URLs found in the report:
 {sources_list}
 
-For each source, decide whether it is relevant enough to ingest into a knowledge base \
-about this topic. Keep sources that are authoritative, on-topic, and contain substantial \
-information. Remove sources that are off-topic, low-quality SEO content, generic landing \
-pages, or paywalled with no useful preview.
+# Decision criteria
+
+Keep a source if it is **on-topic AND authoritative AND substantive**. All three.
+
+Source authority — strong default priors (override only with strong evidence):
+
+PRIMARY (usually keep, on-topic):
+- Official vendor / project docs (anthropic.com/docs, kubernetes.io, etc.)
+- Vendor / project engineering blogs on their own domain
+- GitHub repos, source code, RFCs, design documents
+- Standards bodies (W3C, IETF, IEEE, ISO)
+- Peer-reviewed academic papers (arxiv.org, acm.org, usenix.org)
+- Official release notes, security advisories, postmortems on company domains
+
+LOW-PRIORITY (filter aggressively unless the URL clearly contains unique primary material):
+- Medium posts (medium.com, *.medium.com, "@author" pages)
+- LinkedIn Pulse posts (linkedin.com/pulse)
+- dev.to, hashnode.com, freecodecamp.org listicles
+- "AI marketing" or vendor-comparison landing pages with no engineering detail
+- SEO listicle / round-up content ("top 10", "best X for Y")
+- Generic news aggregators (tldr.tech, infoq summaries of other content)
+- Personal blogs unless the author is a known practitioner with depth on the topic
+
+A great post on a low-priority domain (e.g. an AWS principal engineer writing on Medium with concrete code) CAN be kept — the prior is rebuttable, not absolute. But the default is to filter.
+
+Also remove: off-topic, paywalled with no useful preview, dead/landing pages, content that's just a vendor's marketing pitch.
 
 Respond with ONLY a JSON array of the URLs to KEEP (no markdown fencing), e.g.:
 ["https://example.com/good-source", "https://example.com/another-good-one"]
